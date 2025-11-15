@@ -174,31 +174,128 @@ else:
 ## Step 3: Save Product Recommendation Model
 
 1. Open `models/product_recommendation_model.ipynb`
-2. Run all cells up to and including **Cell 27** (save_artifacts)
-3. The model should already be saved, but to save with our naming, in a **new cell**, copy and paste:
+2. Run all cells up to and including **Cell 21** (model training) or **Cell 27** (save_artifacts)
+3. In a **new cell**, copy and paste this code:
 
 ```python
 import joblib
 import os
+from pathlib import Path
 
-# Get best model
+print("="*60)
+print("SAVING PRODUCT RECOMMENDATION MODEL")
+print("="*60)
+
+# Determine correct models directory
+current_dir = os.getcwd()
+print(f"Current directory: {current_dir}")
+
+# Try to find or create models directory
+if 'models' in current_dir:
+    model_dir = os.path.abspath('.')
+elif os.path.exists('models'):
+    model_dir = os.path.abspath('models')
+elif os.path.exists('../models'):
+    model_dir = os.path.abspath('../models')
+else:
+    model_dir = os.path.abspath('models')
+    os.makedirs(model_dir, exist_ok=True)
+
+print(f"Using model directory: {model_dir}")
+os.makedirs(model_dir, exist_ok=True)
+
+# Get best model (highest F1 score)
 best_model_name = max(results, key=lambda x: results[x]['f1'])
 best_model = results[best_model_name]['model']
 
-# Save with our naming
-os.makedirs('../models', exist_ok=True)
-joblib.dump(best_model, '../models/product_recommendation_model.pkl')
-joblib.dump(label_encoder, '../models/product_label_encoder.pkl')
+print(f"\nBest model: {best_model_name}")
+print(f"  F1-Score: {results[best_model_name]['f1']:.4f}")
+print(f"  Accuracy: {results[best_model_name]['accuracy']:.4f}")
+print()
+
+# Save model
+model_path = os.path.join(model_dir, 'product_recommendation_model.pkl')
+print(f"1. Saving model to: {model_path}")
+try:
+    joblib.dump(best_model, model_path)
+    if os.path.exists(model_path):
+        size_kb = os.path.getsize(model_path) / 1024
+        print(f"   ✅ Saved ({size_kb:.2f} KB)")
+    else:
+        print(f"   ❌ FAILED - File not created!")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
+
+# Save label encoder
+encoder_path = os.path.join(model_dir, 'product_label_encoder.pkl')
+print(f"\n2. Saving label encoder to: {encoder_path}")
+try:
+    joblib.dump(label_encoder, encoder_path)
+    if os.path.exists(encoder_path):
+        size_kb = os.path.getsize(encoder_path) / 1024
+        print(f"   ✅ Saved ({size_kb:.2f} KB)")
+    else:
+        print(f"   ❌ FAILED - File not created!")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
 
 # Save feature info
 feature_info = {
     'numerical_cols': numerical_cols,
     'categorical_cols': categorical_cols,
-    'target': 'product_category'
+    'target': 'product_category',
+    'best_model_name': best_model_name,
+    'f1_score': results[best_model_name]['f1'],
+    'accuracy': results[best_model_name]['accuracy']
 }
-joblib.dump(feature_info, '../models/product_feature_info.pkl')
 
-print("✅ Product recommendation model saved!")
+feature_info_path = os.path.join(model_dir, 'product_feature_info.pkl')
+print(f"\n3. Saving feature info to: {feature_info_path}")
+try:
+    joblib.dump(feature_info, feature_info_path)
+    if os.path.exists(feature_info_path):
+        size_kb = os.path.getsize(feature_info_path) / 1024
+        print(f"   ✅ Saved ({size_kb:.2f} KB)")
+        print(f"   Numerical columns: {len(numerical_cols)}")
+        print(f"   Categorical columns: {len(categorical_cols)}")
+    else:
+        print(f"   ❌ FAILED - File not created!")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
+
+# Verify all files
+print("\n" + "="*60)
+print("VERIFICATION")
+print("="*60)
+required_files = [
+    'product_recommendation_model.pkl',
+    'product_label_encoder.pkl',
+    'product_feature_info.pkl'
+]
+all_exist = True
+for filename in required_files:
+    filepath = os.path.join(model_dir, filename)
+    if os.path.exists(filepath):
+        size_kb = os.path.getsize(filepath) / 1024
+        print(f"✅ {filename} ({size_kb:.2f} KB)")
+    else:
+        print(f"❌ {filename} - MISSING!")
+        all_exist = False
+
+if all_exist:
+    print("\n✅ ALL MODEL FILES SAVED SUCCESSFULLY!")
+    print(f"\nLocation: {model_dir}")
+    print(f"\nModel Info:")
+    print(f"  Best Model: {best_model_name}")
+    print(f"  F1-Score: {results[best_model_name]['f1']:.4f}")
+    print(f"  Accuracy: {results[best_model_name]['accuracy']:.4f}")
+    print("\nFull paths:")
+    for filename in required_files:
+        filepath = os.path.join(model_dir, filename)
+        print(f"  • {filepath}")
+else:
+    print("\n❌ SOME FILES ARE MISSING!")
+    print(f"Check directory: {model_dir}")
 ```
 
 4. Run the cell.
@@ -248,6 +345,59 @@ Or from the project root:
 cd scripts
 python system_demonstration.py
 ```
+
+---
+
+---
+
+## Downloading Models from Google Colab
+
+If you saved models in Google Colab, you need to download them. After saving, run this in a new Colab cell:
+
+### Download Product Recommendation Model:
+
+```python
+from google.colab import files
+import os
+
+# Download product model files
+files_to_download = [
+    '/models/product_recommendation_model.pkl',
+    '/models/product_label_encoder.pkl',
+    '/models/product_feature_info.pkl'
+]
+
+print("Downloading files...")
+for filepath in files_to_download:
+    if os.path.exists(filepath):
+        files.download(filepath)
+        print(f"✅ Downloaded: {os.path.basename(filepath)}")
+    else:
+        print(f"❌ Not found: {filepath}")
+```
+
+### Or Download as ZIP:
+
+```python
+import zipfile
+from google.colab import files
+
+zip_path = '/content/product_models.zip'
+with zipfile.ZipFile(zip_path, 'w') as zipf:
+    for filepath in [
+        '/models/product_recommendation_model.pkl',
+        '/models/product_label_encoder.pkl',
+        '/models/product_feature_info.pkl'
+    ]:
+        if os.path.exists(filepath):
+            zipf.write(filepath, os.path.basename(filepath))
+            print(f"Added: {os.path.basename(filepath)}")
+
+files.download(zip_path)
+print("✅ Downloaded product_models.zip")
+```
+
+See `scripts/DOWNLOAD_PRODUCT_MODEL.py` for a complete download script.
 
 ---
 

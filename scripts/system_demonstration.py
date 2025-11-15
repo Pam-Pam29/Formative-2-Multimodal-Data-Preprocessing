@@ -42,12 +42,12 @@ STANDARD_IDENTITIES = ["Pam", "Rele", "dennis"]
 # MODEL LOADING
 # ============================================================================
 
-def load_models(models_dir="models"):
+def load_models(models_dir="Models"):
     """
-    Load all trained models and related artifacts
+    Load all trained models and related artifacts from organized subdirectories
     
     Args:
-        models_dir (str): Directory containing model files
+        models_dir (str): Directory containing model subdirectories
         
     Returns:
         dict: Dictionary containing all loaded models and artifacts
@@ -55,79 +55,108 @@ def load_models(models_dir="models"):
     models = {}
     
     try:
-        # Load face recognition model
-        face_model_path = os.path.join(models_dir, "face_recognition_model.pkl")
+        # ============================================================
+        # FACE RECOGNITION MODEL
+        # ============================================================
+        face_dir = os.path.join(models_dir, "face_recognition")
+        face_model_path = os.path.join(face_dir, "face_recognition_model.pkl")
+        
         if os.path.exists(face_model_path):
             models['face_model'] = joblib.load(face_model_path)
-            print(f"✓ Loaded face recognition model from {face_model_path}")
+            print(f"[OK] Loaded face recognition model from {face_model_path}")
         else:
-            print(f"⚠ Warning: Face model not found at {face_model_path}")
+            print(f"[WARNING] Warning: Face model not found at {face_model_path}")
             models['face_model'] = None
         
-        # Load face embeddings data (for confidence calculation)
-        face_data_path = os.path.join(models_dir, "face_embeddings_data.pkl")
+        # Load face embeddings data (for confidence calculation) - optional
+        face_data_path = os.path.join(face_dir, "face_embeddings_data.pkl")
         if os.path.exists(face_data_path):
             face_data = joblib.load(face_data_path)
             models['face_embeddings_X'] = face_data['X']
             models['face_embeddings_y'] = face_data['y']
-            print(f"✓ Loaded face embeddings data from {face_data_path}")
+            print(f"[OK] Loaded face embeddings data from {face_data_path}")
         else:
             models['face_embeddings_X'] = None
             models['face_embeddings_y'] = None
-            print(f"⚠ Warning: Face embeddings data not found")
+            print(f"[NOTE] Note: Face embeddings data not found (optional for confidence calculation)")
         
-        # Load voiceprint model
-        voice_model_path = os.path.join(models_dir, "voiceprint_model.pkl")
-        voice_scaler_path = os.path.join(models_dir, "voiceprint_scaler.pkl")
-        voice_encoder_path = os.path.join(models_dir, "voiceprint_label_encoder.pkl")
-        voice_features_path = os.path.join(models_dir, "voiceprint_feature_cols.pkl")
+        # ============================================================
+        # VOICEPRINT MODEL
+        # ============================================================
+        voice_dir = os.path.join(models_dir, "voiceprint")
+        voice_model_path = os.path.join(voice_dir, "voiceprint_model.pkl")
+        voice_scaler_path = os.path.join(voice_dir, "voiceprint_scaler.pkl")
+        voice_encoder_path = os.path.join(voice_dir, "voiceprint_label_encoder.pkl")
+        voice_features_path = os.path.join(voice_dir, "voiceprint_feature_cols.pkl")
         
         if all(os.path.exists(p) for p in [voice_model_path, voice_scaler_path, voice_encoder_path]):
             models['voice_model'] = joblib.load(voice_model_path)
             models['voice_scaler'] = joblib.load(voice_scaler_path)
             models['voice_encoder'] = joblib.load(voice_encoder_path)
-            print(f"✓ Loaded voiceprint model from {voice_model_path}")
+            print(f"[OK] Loaded voiceprint model from {voice_model_path}")
             
             if os.path.exists(voice_features_path):
                 models['voice_feature_cols'] = joblib.load(voice_features_path)
+                print(f"[OK] Loaded voice feature columns ({len(models['voice_feature_cols'])} features)")
             else:
                 models['voice_feature_cols'] = None
-                print(f"⚠ Warning: Voice feature columns not found")
+                print(f"[WARNING] Warning: Voice feature columns not found")
         else:
-            print(f"⚠ Warning: Voice model files not found")
+            missing = [p for p in [voice_model_path, voice_scaler_path, voice_encoder_path] if not os.path.exists(p)]
+            print(f"[WARNING] Warning: Voice model files not found:")
+            for p in missing:
+                print(f"     Missing: {os.path.basename(p)}")
             models['voice_model'] = None
             models['voice_scaler'] = None
             models['voice_encoder'] = None
             models['voice_feature_cols'] = None
         
-        # Load product recommendation model
-        product_model_path = os.path.join(models_dir, "product_recommendation_model.pkl")
-        product_encoder_path = os.path.join(models_dir, "product_label_encoder.pkl")
-        product_features_path = os.path.join(models_dir, "product_feature_info.pkl")
+        # ============================================================
+        # PRODUCT RECOMMENDATION MODEL
+        # ============================================================
+        product_dir = os.path.join(models_dir, "product_recommendation")
+        
+        # Try both naming conventions
+        product_model_path = os.path.join(product_dir, "product_recommendation_model.pkl")
+        if not os.path.exists(product_model_path):
+            # Try alternative naming
+            product_model_path = os.path.join(product_dir, "best_product_recommendation_model.pkl")
+        
+        product_encoder_path = os.path.join(product_dir, "product_label_encoder.pkl")
+        if not os.path.exists(product_encoder_path):
+            # Try alternative naming
+            product_encoder_path = os.path.join(product_dir, "label_encoder.pkl")
+        
+        product_features_path = os.path.join(product_dir, "product_feature_info.pkl")
+        if not os.path.exists(product_features_path):
+            # Try alternative naming
+            product_features_path = os.path.join(product_dir, "feature_info.pkl")
         
         if os.path.exists(product_model_path):
             models['product_model'] = joblib.load(product_model_path)
-            print(f"✓ Loaded product recommendation model from {product_model_path}")
+            print(f"[OK] Loaded product recommendation model from {product_model_path}")
             
             if os.path.exists(product_encoder_path):
                 models['product_encoder'] = joblib.load(product_encoder_path)
+                print(f"[OK] Loaded product label encoder from {product_encoder_path}")
             else:
                 models['product_encoder'] = None
-                print(f"⚠ Warning: Product label encoder not found")
+                print(f"[WARNING] Warning: Product label encoder not found")
             
             if os.path.exists(product_features_path):
                 models['product_feature_info'] = joblib.load(product_features_path)
+                print(f"[OK] Loaded product feature info from {product_features_path}")
             else:
                 models['product_feature_info'] = None
-                print(f"⚠ Warning: Product feature info not found")
+                print(f"[WARNING] Warning: Product feature info not found")
         else:
-            print(f"⚠ Warning: Product model not found at {product_model_path}")
+            print(f"[WARNING] Warning: Product model not found in {product_dir}")
             models['product_model'] = None
             models['product_encoder'] = None
             models['product_feature_info'] = None
         
     except Exception as e:
-        print(f"❌ Error loading models: {e}")
+        print(f"[ERROR] Error loading models: {e}")
         raise
     
     return models
@@ -163,16 +192,21 @@ def recognize_face(image_path, face_model, face_embeddings_X, face_embeddings_y,
         # Predict identity
         pred_name = face_model.predict([embedding])[0]
         
-        # Calculate confidence using cosine similarity
+        # Calculate confidence using cosine similarity or prediction probability
         if face_embeddings_X is not None and face_embeddings_y is not None:
-            # Get embeddings for predicted class
-            class_mask = face_embeddings_y == pred_name
-            if class_mask.sum() > 0:
-                class_embeddings = face_embeddings_X[class_mask]
-                similarities = cosine_similarity([embedding], class_embeddings)[0]
-                confidence = float(np.max(similarities))
-            else:
-                # Fallback: use prediction probability
+            try:
+                # Get embeddings for predicted class
+                class_mask = face_embeddings_y == pred_name
+                if class_mask.sum() > 0:
+                    class_embeddings = face_embeddings_X[class_mask]
+                    similarities = cosine_similarity([embedding], class_embeddings)[0]
+                    confidence = float(np.max(similarities))
+                else:
+                    # Fallback: use prediction probability
+                    proba = face_model.predict_proba([embedding])[0]
+                    confidence = float(np.max(proba))
+            except Exception:
+                # Fallback: use prediction probability if cosine similarity fails
                 proba = face_model.predict_proba([embedding])[0]
                 confidence = float(np.max(proba))
         else:
@@ -186,7 +220,7 @@ def recognize_face(image_path, face_model, face_embeddings_X, face_embeddings_y,
         return is_recognized, pred_name, confidence
         
     except Exception as e:
-        print(f"❌ Error in face recognition: {e}")
+        print(f"[ERROR] Error in face recognition: {e}")
         return False, None, 0.0
 
 
@@ -242,7 +276,7 @@ def verify_voice(audio_path, voice_model, voice_scaler, voice_encoder,
         return is_verified, speaker_identity, confidence
         
     except Exception as e:
-        print(f"❌ Error in voice verification: {e}")
+        print(f"[ERROR] Error in voice verification: {e}")
         import traceback
         traceback.print_exc()
         return False, None, 0.0
@@ -334,7 +368,7 @@ def recommend_products(user_identity, product_model, product_encoder,
             }
             
     except Exception as e:
-        print(f"❌ Error in product recommendation: {e}")
+        print(f"[ERROR] Error in product recommendation: {e}")
         import traceback
         traceback.print_exc()
         return {
@@ -361,12 +395,12 @@ def main_authentication_flow(models, test_mode=False):
     print("\n" + "="*60)
     print("MULTIMODAL AUTHENTICATION & PRODUCT RECOMMENDATION SYSTEM")
     print("="*60)
-    print("\n🔐 Starting authentication process...\n")
+    print("\n[LOCK] Starting authentication process...\n")
     
     # Step 1: Face Recognition
-    print("━" * 60)
+    print("-" * 60)
     print("STEP 1: FACE RECOGNITION")
-    print("━" * 60)
+    print("-" * 60)
     
     if test_mode:
         # Use a test image
@@ -381,7 +415,7 @@ def main_authentication_flow(models, test_mode=False):
         image_path = input("Enter face image path: ").strip().strip('"').strip("'")
     
     if not os.path.exists(image_path):
-        print(f"❌ Error: Image file not found: {image_path}")
+        print(f"[ERROR] Error: Image file not found: {image_path}")
         return
     
     print(f"Processing face image: {image_path}")
@@ -394,21 +428,21 @@ def main_authentication_flow(models, test_mode=False):
     )
     
     if not is_recognized:
-        print(f"\n❌ ACCESS DENIED: Face not recognized")
+        print(f"\n[ERROR] ACCESS DENIED: Face not recognized")
         print(f"   Confidence: {face_confidence*100:.2f}% (threshold: 50%)")
         return
     
     # Map face identity to voice identity
     voice_identity = IDENTITY_MAPPING.get(face_identity, face_identity)
     
-    print(f"\n✅ Face recognized!")
+    print(f"\n[SUCCESS] Face recognized!")
     print(f"   Identity: {face_identity} (voice: {voice_identity})")
     print(f"   Confidence: {face_confidence*100:.2f}%")
     
     # Step 2: Voice Verification
-    print("\n" + "━" * 60)
+    print("\n" + "-" * 60)
     print("STEP 2: VOICEPRINT VERIFICATION")
-    print("━" * 60)
+    print("-" * 60)
     
     if test_mode:
         # Use a test audio file
@@ -424,7 +458,7 @@ def main_authentication_flow(models, test_mode=False):
         audio_path = input("Enter audio file path: ").strip().strip('"').strip("'")
     
     if not os.path.exists(audio_path):
-        print(f"❌ Error: Audio file not found: {audio_path}")
+        print(f"[ERROR] Error: Audio file not found: {audio_path}")
         return
     
     print(f"Processing voice sample: {audio_path}")
@@ -439,20 +473,20 @@ def main_authentication_flow(models, test_mode=False):
     )
     
     if not is_verified:
-        print(f"\n❌ ACCESS DENIED: Voice verification failed")
+        print(f"\n[ERROR] ACCESS DENIED: Voice verification failed")
         print(f"   Expected: {voice_identity}")
         print(f"   Detected: {speaker_identity}")
         print(f"   Confidence: {voice_confidence*100:.2f}% (threshold: 70%)")
         return
     
-    print(f"\n✅ Voice verified!")
+    print(f"\n[SUCCESS] Voice verified!")
     print(f"   Speaker: {speaker_identity}")
     print(f"   Confidence: {voice_confidence*100:.2f}%")
     
     # Step 3: Product Recommendation
-    print("\n" + "━" * 60)
+    print("\n" + "-" * 60)
     print("STEP 3: PRODUCT RECOMMENDATION")
-    print("━" * 60)
+    print("-" * 60)
     
     print(f"Fetching product recommendations for {speaker_identity}...")
     
@@ -464,17 +498,17 @@ def main_authentication_flow(models, test_mode=False):
     )
     
     if recommendations['status'] == 'success':
-        print(f"\n✅ Product Recommendations:")
+        print(f"\n[SUCCESS] Product Recommendations:")
         print(f"   Recommended Category: {recommendations['prediction']}")
         print(f"   Confidence: {recommendations['confidence']*100:.2f}%")
         print(f"\n   Top 3 Categories:")
         for category, prob in recommendations['top_predictions'].items():
             print(f"     • {category}: {prob*100:.2f}%")
     else:
-        print(f"\n⚠ Warning: {recommendations.get('message', 'Could not generate recommendations')}")
+        print(f"\n[WARNING] Warning: {recommendations.get('message', 'Could not generate recommendations')}")
     
     print("\n" + "="*60)
-    print("✅ AUTHENTICATION COMPLETE - ACCESS GRANTED")
+    print("[SUCCESS] AUTHENTICATION COMPLETE - ACCESS GRANTED")
     print("="*60)
 
 
@@ -499,7 +533,7 @@ def simulate_unauthorized_face(models):
         unauthorized_image = "data/images/Neutral-Pam.jpg"  # Replace with actual unauthorized image
     
     if not os.path.exists(unauthorized_image):
-        print(f"❌ Error: Image file not found: {unauthorized_image}")
+        print(f"[ERROR] Error: Image file not found: {unauthorized_image}")
         return
     
     is_recognized, identity, confidence = recognize_face(
@@ -516,10 +550,10 @@ def simulate_unauthorized_face(models):
     print(f"  Threshold: 50%")
     
     if not is_recognized or confidence < 0.3:
-        print(f"\n✅ ACCESS DENIED: Face not recognized")
+        print(f"\n[SUCCESS] ACCESS DENIED: Face not recognized")
         print(f"   Reason: Confidence below threshold")
     else:
-        print(f"\n⚠ Note: This demonstrates the security check")
+        print(f"\n[WARNING] Note: This demonstrates the security check")
         print(f"   (In real scenario, would check against unauthorized database)")
 
 
@@ -547,7 +581,7 @@ def simulate_unauthorized_voice(models):
         wrong_audio = "data/audio_samples/Rele_Recording_1.m4a"  # Wrong user
     
     if not os.path.exists(wrong_audio):
-        print(f"❌ Error: Audio file not found: {wrong_audio}")
+        print(f"[ERROR] Error: Audio file not found: {wrong_audio}")
         return
     
     is_verified, speaker_identity, confidence = verify_voice(
@@ -566,10 +600,10 @@ def simulate_unauthorized_voice(models):
     print(f"  Confidence: {confidence*100:.2f}%")
     
     if not is_verified:
-        print(f"\n❌ ACCESS DENIED: Voice verification failed")
+        print(f"\n[ERROR] ACCESS DENIED: Voice verification failed")
         print(f"   Reason: Speaker identity mismatch or low confidence")
     else:
-        print(f"\n⚠ Warning: Unexpected verification (check thresholds)")
+        print(f"\n[WARNING] Warning: Unexpected verification (check thresholds)")
 
 
 # ============================================================================
@@ -585,15 +619,26 @@ def main():
     # Load models
     print("\nLoading models...")
     try:
-        models = load_models()
+        # Try Models directory first (new structure), then models (old structure)
+        if os.path.exists("Models"):
+            models = load_models(models_dir="Models")
+        elif os.path.exists("models"):
+            models = load_models(models_dir="models")
+        else:
+            print("[ERROR] Models directory not found!")
+            print("   Expected: 'Models/' or 'models/' directory")
+            print("   Current directory:", os.getcwd())
+            return
     except Exception as e:
-        print(f"❌ Failed to load models: {e}")
-        print("\nPlease ensure models are saved in the 'models' directory.")
+        print(f"[ERROR] Failed to load models: {e}")
+        import traceback
+        traceback.print_exc()
+        print("\nPlease ensure models are saved in the 'Models' or 'models' directory.")
         return
     
     # Check if models loaded successfully
     if not any([models.get('face_model'), models.get('voice_model'), models.get('product_model')]):
-        print("\n❌ No models loaded. Please train and save models first.")
+        print("\n[ERROR] No models loaded. Please train and save models first.")
         return
     
     while True:
@@ -615,13 +660,13 @@ def main():
         elif choice == "3":
             simulate_unauthorized_voice(models)
         elif choice == "4":
-            print("\n🔧 Test Mode: Using default test files")
+            print("\n[TEST] Test Mode: Using default test files")
             main_authentication_flow(models, test_mode=True)
         elif choice == "5":
-            print("\n👋 Exiting...")
+            print("\n[BYE] Exiting...")
             break
         else:
-            print("\n❌ Invalid choice. Please enter 1-5.")
+            print("\n[ERROR] Invalid choice. Please enter 1-5.")
 
 
 if __name__ == "__main__":

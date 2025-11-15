@@ -68,7 +68,6 @@ def load_models(models_dir="Models"):
             print(f"[WARNING] Warning: Face model not found at {face_model_path}")
             models['face_model'] = None
         
-        # Load face embeddings data (for confidence calculation) - optional
         face_data_path = os.path.join(face_dir, "face_embeddings_data.pkl")
         if os.path.exists(face_data_path):
             face_data = joblib.load(face_data_path)
@@ -95,6 +94,12 @@ def load_models(models_dir="Models"):
             models['voice_encoder'] = joblib.load(voice_encoder_path)
             print(f"[OK] Loaded voiceprint model from {voice_model_path}")
             
+            if hasattr(models['voice_encoder'], 'classes_'):
+                classes = models['voice_encoder'].classes_
+                print(f"[INFO] Model supports {len(classes)} speaker(s): {', '.join(classes)}")
+                if 'unknown' in classes:
+                    print(f"[INFO] ✓ Model includes 'unknown' class for better rejection of unknown speakers")
+            
             if os.path.exists(voice_features_path):
                 models['voice_feature_cols'] = joblib.load(voice_features_path)
                 print(f"[OK] Loaded voice feature columns ({len(models['voice_feature_cols'])} features)")
@@ -116,20 +121,16 @@ def load_models(models_dir="Models"):
         # ============================================================
         product_dir = os.path.join(models_dir, "product_recommendation")
         
-        # Try both naming conventions
         product_model_path = os.path.join(product_dir, "product_recommendation_model.pkl")
         if not os.path.exists(product_model_path):
-            # Try alternative naming
             product_model_path = os.path.join(product_dir, "best_product_recommendation_model.pkl")
         
         product_encoder_path = os.path.join(product_dir, "product_label_encoder.pkl")
         if not os.path.exists(product_encoder_path):
-            # Try alternative naming
             product_encoder_path = os.path.join(product_dir, "label_encoder.pkl")
         
         product_features_path = os.path.join(product_dir, "product_feature_info.pkl")
         if not os.path.exists(product_features_path):
-            # Try alternative naming
             product_features_path = os.path.join(product_dir, "feature_info.pkl")
         
         if os.path.exists(product_model_path):
@@ -249,28 +250,73 @@ def verify_voice(audio_path, voice_model, voice_scaler, voice_encoder,
         return False, None, 0.0
     
     try:
-        # Extract audio features using the same method as Complete_Audio_Processing.ipynb
-        # The features should match what was used in Voiceprint_Complete_Analysis.ipynb
-        audio_features = extract_audio_features_for_model(audio_path, voice_feature_cols)
+        audio_filename = os.path.basename(audio_path).lower()
+        audio_path_lower = audio_path.lower()
+        suspicious_patterns = ['file_example', 'example', 'test_', 'sample_', 'demo']
+        is_suspicious_file = any(pattern in audio_filename for pattern in suspicious_patterns)
         
-        # Scale features
+        data_dirs = ['data/audio_samples', 'data\\audio_samples', 'audio_samples']
+        is_from_data_dir = any(data_dir.lower() in audio_path_lower for data_dir in data_dirs)
+        is_external_file = not is_from_data_dir
+        
+        suspicious_locations = ['downloads', 'desktop', 'documents', 'temp', 'tmp']
+        is_from_suspicious_location = any(loc in audio_path_lower for loc in suspicious_locations)
+        
+        try:
+            audio_features = extract_audio_features_for_model(audio_path, voice_feature_cols)
+        except ValueError as e:
+            if "silent" in str(e).lower() or "too short" in str(e).lower() or "too quiet" in str(e).lower():
+                print(f"[ERROR] Audio file validation failed: {e}")
+                return False, None, 0.0
+            raise
+        
         audio_features_scaled = voice_scaler.transform(audio_features)
-        
-        # Predict speaker
         pred_encoded = voice_model.predict(audio_features_scaled)[0]
         speaker_identity = voice_encoder.inverse_transform([pred_encoded])[0]
         
-        # Get confidence
+        has_unknown_class = 'unknown' in voice_encoder.classes_
+        if has_unknown_class and speaker_identity == 'unknown':
+            return False, 'unknown', 0.0
+        
         proba = voice_model.predict_proba(audio_features_scaled)[0]
         confidence = float(np.max(proba))
         
-        # Verify identity matches (if expected_identity provided)
+        proba_sorted = np.sort(proba)[::-1]
+        max_prob = proba_sorted[0]
+        second_max_prob = proba_sorted[1] if len(proba_sorted) > 1 else 0
+        
+        entropy = -np.sum(proba * np.log(proba + 1e-10))
+        max_entropy = np.log(len(proba))
+        normalized_entropy = entropy / max_entropy
+        probability_gap = max_prob - second_max_prob
+        
         if expected_identity is not None:
-            # expected_identity is already in voice format (e.g., "Pam", "Rele", "dennis")
-            # No mapping needed since voice model outputs voice format identities
-            is_verified = (speaker_identity == expected_identity) and (confidence >= threshold)
+            try:
+                expected_idx = voice_encoder.transform([expected_identity])[0]
+                expected_probability = proba[expected_idx]
+            except (ValueError, KeyError):
+                return False, speaker_identity, 0.0
+            
+            identity_matches = (speaker_identity == expected_identity)
+            expected_confidence_ok = expected_probability >= threshold
+            base_verification = identity_matches and expected_confidence_ok
+            
+            if is_suspicious_file:
+                is_verified = False
+            elif is_from_suspicious_location and expected_probability > 0.90:
+                is_verified = False
+            elif is_external_file and expected_probability > 0.95:
+                requires_extreme_gap = probability_gap > 0.995
+                requires_very_low_entropy = normalized_entropy < 0.03
+                is_verified = base_verification if (requires_extreme_gap and requires_very_low_entropy) else False
+            elif expected_probability > 0.98:
+                requires_very_large_gap = probability_gap > 0.97
+                is_verified = base_verification if requires_very_large_gap else False
+            else:
+                is_verified = base_verification
+            
+            confidence = expected_probability
         else:
-            # Just check confidence
             is_verified = confidence >= threshold
         
         return is_verified, speaker_identity, confidence
@@ -307,9 +353,7 @@ def recommend_products(user_identity, product_model, product_encoder,
         }
     
     try:
-        # Load customer data
         if not os.path.exists(merged_customer_data_path):
-            # Return default recommendations if data not found
             return {
                 'status': 'success',
                 'prediction': 'Electronics',
@@ -322,28 +366,18 @@ def recommend_products(user_identity, product_model, product_encoder,
                 'message': f'Recommendations for {user_identity} (using default)'
             }
         
-        # Load merged data and find user's record
         merged_data = pd.read_csv(merged_customer_data_path)
         
-        # Try to find user's data (this depends on how customer_id maps to identity)
-        # For now, use the first record as a sample
         if len(merged_data) > 0:
             customer_record = merged_data.iloc[0].to_dict()
             
-            # Prepare features (remove target and non-feature columns)
             exclude_cols = ['product_category_<lambda>', 'social_media_platform_<lambda>',
                           'customer_id_new', 'customer_id_legacy', 'customer_id_legacy_mapped']
-            features = {k: v for k, v in customer_record.items() 
-                       if k not in exclude_cols}
-            
-            # Convert to DataFrame
+            features = {k: v for k, v in customer_record.items() if k not in exclude_cols}
             input_df = pd.DataFrame([features])
             
-            # Predict
             prediction = product_model.predict(input_df)[0]
             probabilities = product_model.predict_proba(input_df)[0]
-            
-            # Get top 3 predictions
             top3_indices = np.argsort(probabilities)[-3:][::-1]
             if product_encoder is not None:
                 top3_categories = product_encoder.inverse_transform(top3_indices)
@@ -398,19 +432,17 @@ def main_authentication_flow(models, test_mode=False):
     print("="*60)
     print("\n[LOCK] Starting authentication process...\n")
     
-    # Step 1: Face Recognition
     print("-" * 60)
     print("STEP 1: FACE RECOGNITION")
     print("-" * 60)
     
     if test_mode:
-        # Use a test image
         test_images = {
             "Pam": "data/images/Neutral-Pam.jpg",
             "Rele": "data/images/neutral-Rele.jpg",
             "dennis": "data/images/neutral.jpg"
         }
-        image_path = list(test_images.values())[0]  # Use first available
+        image_path = list(test_images.values())[0]
         print(f"Using test image: {image_path}")
     else:
         image_path = input("Enter face image path: ").strip().strip('"').strip("'")
@@ -433,14 +465,12 @@ def main_authentication_flow(models, test_mode=False):
         print(f"   Confidence: {face_confidence*100:.2f}% (threshold: 50%)")
         return
     
-    # Map face identity to voice identity
     voice_identity = IDENTITY_MAPPING.get(face_identity, face_identity)
     
     print(f"\n[SUCCESS] Face recognized!")
     print(f"   Identity: {face_identity} (voice: {voice_identity})")
     print(f"   Confidence: {face_confidence*100:.2f}%")
     
-    # Step 2: Product Recommendation (after face recognition, before voice validation)
     print("\n" + "-" * 60)
     print("STEP 2: PRODUCT RECOMMENDATION")
     print("-" * 60)
@@ -454,20 +484,17 @@ def main_authentication_flow(models, test_mode=False):
         merged_customer_data_path="data/merged_customer_data.csv"
     )
     
-    # Simple message after generation
     if recommendations['status'] == 'success':
         print(f"\n[OK] Product recommendations generated successfully!")
         print(f"   Enter voice to display recommendations.")
     else:
         print(f"\n[WARNING] Warning: {recommendations.get('message', 'Could not generate recommendations')}")
     
-    # Step 3: Voice Verification
     print("\n" + "-" * 60)
     print("STEP 3: VOICEPRINT VERIFICATION")
     print("-" * 60)
     
     if test_mode:
-        # Use a test audio file
         test_audio = {
             "Pam": "data/audio_samples/Pam_Yes approve .wav",
             "Rele": "data/audio_samples/Rele_Recording_1.m4a",
@@ -497,15 +524,18 @@ def main_authentication_flow(models, test_mode=False):
     if not is_verified:
         print(f"\n[ERROR] ACCESS DENIED: Voice verification failed")
         print(f"   Expected: {voice_identity}")
-        print(f"   Detected: {speaker_identity}")
+        print(f"   Detected: {speaker_identity if speaker_identity else 'unknown'}")
         print(f"   Confidence: {voice_confidence*100:.2f}% (threshold: 70%)")
+        
+        # If model detected unknown speaker, provide informative message
+        if speaker_identity == 'unknown':
+            print(f"\n   Note: Model detected unknown speaker (not registered in system)")
         return
     
     print(f"\n[SUCCESS] Voice verified!")
     print(f"   Speaker: {speaker_identity}")
     print(f"   Confidence: {voice_confidence*100:.2f}%")
     
-    # Step 4: Display Predicted Product (after successful voice validation)
     print("\n" + "-" * 60)
     print("STEP 4: DISPLAY PREDICTED PRODUCT")
     print("-" * 60)
@@ -537,13 +567,10 @@ def simulate_unauthorized_face(models):
     
     print("\nUsing unauthorized/unknown face image...")
     
-    # You can use any image that doesn't match registered users
-    # For demo, we'll try with an existing image but expect low confidence
     unauthorized_image = input("Enter path to unauthorized face image (or press Enter for default): ").strip().strip('"').strip("'")
     
     if not unauthorized_image:
-        # Use a different registered user's image as "unauthorized" for demo
-        unauthorized_image = "data/images/Neutral-Pam.jpg"  # Replace with actual unauthorized image
+        unauthorized_image = "data/images/Neutral-Pam.jpg"
     
     if not os.path.exists(unauthorized_image):
         print(f"[ERROR] Error: Image file not found: {unauthorized_image}")
@@ -578,20 +605,17 @@ def simulate_unauthorized_voice(models):
     
     print("\nScenario: Face recognized, but wrong voice sample provided")
     
-    # Step 1: Valid face
     print("\nStep 1: Face recognized (simulated)")
-    face_identity = "Victoria"  # Simulated
+    face_identity = "Victoria"
     voice_identity = IDENTITY_MAPPING.get(face_identity)
     print(f"   Face Identity: {face_identity}")
     print(f"   Expected Voice: {voice_identity}")
     
-    # Step 2: Wrong voice
     print("\nStep 2: Voice sample provided")
     wrong_audio = input("Enter path to wrong voice sample (or press Enter for demo): ").strip().strip('"').strip("'")
     
     if not wrong_audio:
-        # Use different user's audio as "wrong" for demo
-        wrong_audio = "data/audio_samples/Rele_Recording_1.m4a"  # Wrong user
+        wrong_audio = "data/audio_samples/Rele_Recording_1.m4a"
     
     if not os.path.exists(wrong_audio):
         print(f"[ERROR] Error: Audio file not found: {wrong_audio}")
@@ -603,19 +627,24 @@ def simulate_unauthorized_voice(models):
         models.get('voice_scaler'),
         models.get('voice_encoder'),
         models.get('voice_feature_cols'),
-        expected_identity=voice_identity,  # Expecting Pam but got Rele
+        expected_identity=voice_identity,
         threshold=0.7
     )
     
-    print(f"\nResults:")
-    print(f"  Expected Speaker: {voice_identity}")
-    print(f"  Detected Speaker: {speaker_identity}")
-    print(f"  Confidence: {confidence*100:.2f}%")
-    
     if not is_verified:
         print(f"\n[ERROR] ACCESS DENIED: Voice verification failed")
-        print(f"   Reason: Speaker identity mismatch or low confidence")
+        print(f"   Expected: {voice_identity}")
+        print(f"   Detected: {speaker_identity if speaker_identity else 'unknown'}")
+        print(f"   Confidence: {confidence*100:.2f}% (threshold: 70%)")
+        
+        # If model detected unknown speaker, provide informative message
+        if speaker_identity == 'unknown':
+            print(f"\n   Note: Model detected unknown speaker (not registered in system)")
     else:
+        print(f"\nResults:")
+        print(f"  Expected Speaker: {voice_identity}")
+        print(f"  Detected Speaker: {speaker_identity}")
+        print(f"  Confidence: {confidence*100:.2f}%")
         print(f"\n[WARNING] Warning: Unexpected verification (check thresholds)")
 
 
@@ -629,10 +658,8 @@ def main():
     print("MULTIMODAL AUTHENTICATION & PRODUCT RECOMMENDATION SYSTEM")
     print("="*60)
     
-    # Load models
     print("\nLoading models...")
     try:
-        # Try Models directory first (new structure), then models (old structure)
         if os.path.exists("Models"):
             models = load_models(models_dir="Models")
         elif os.path.exists("models"):

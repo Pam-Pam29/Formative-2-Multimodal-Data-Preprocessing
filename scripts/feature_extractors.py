@@ -108,6 +108,21 @@ def extract_all_audio_features(audio_path):
         dict: Dictionary containing all audio features
     """
     audio, sr = librosa.load(audio_path, sr=None)
+    
+    # Check if audio is silent or too quiet
+    max_amplitude = np.max(np.abs(audio))
+    rms_energy = np.mean(librosa.feature.rms(y=audio))
+    
+    # Validate audio is not silent
+    # Typical speech has max_amplitude > 0.01 and rms_energy > 0.001
+    if max_amplitude < 0.001 or rms_energy < 0.0001:
+        raise ValueError(f"Audio file appears to be silent or too quiet (max_amplitude={max_amplitude:.6f}, rms_energy={rms_energy:.6f})")
+    
+    # Check if audio is too short (less than 0.1 seconds)
+    duration = len(audio) / sr
+    if duration < 0.1:
+        raise ValueError(f"Audio file is too short (duration={duration:.3f}s, minimum 0.1s required)")
+    
     features = {}
 
     # MFCC features

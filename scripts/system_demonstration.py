@@ -266,9 +266,9 @@ def verify_voice(audio_path, voice_model, voice_scaler, voice_encoder,
         
         # Verify identity matches (if expected_identity provided)
         if expected_identity is not None:
-            # Map identity if needed
-            expected_mapped = IDENTITY_MAPPING.get(expected_identity, expected_identity)
-            is_verified = (speaker_identity == expected_mapped) and (confidence >= threshold)
+            # expected_identity is already in voice format (e.g., "Pam", "Rele", "dennis")
+            # No mapping needed since voice model outputs voice format identities
+            is_verified = (speaker_identity == expected_identity) and (confidence >= threshold)
         else:
             # Just check confidence
             is_verified = confidence >= threshold
@@ -383,10 +383,11 @@ def recommend_products(user_identity, product_model, product_encoder,
 
 def main_authentication_flow(models, test_mode=False):
     """
-    Main authentication flow:
+    Main authentication flow (matches flowchart):
     1. Face recognition
-    2. Voice verification  
-    3. Product recommendation
+    2. Product recommendation (after face recognition)
+    3. Voice validation
+    4. Display predicted product
     
     Args:
         models (dict): Dictionary of loaded models
@@ -439,9 +440,30 @@ def main_authentication_flow(models, test_mode=False):
     print(f"   Identity: {face_identity} (voice: {voice_identity})")
     print(f"   Confidence: {face_confidence*100:.2f}%")
     
-    # Step 2: Voice Verification
+    # Step 2: Product Recommendation (after face recognition, before voice validation)
     print("\n" + "-" * 60)
-    print("STEP 2: VOICEPRINT VERIFICATION")
+    print("STEP 2: PRODUCT RECOMMENDATION")
+    print("-" * 60)
+    
+    print(f"Generating product recommendations for {voice_identity}...")
+    
+    recommendations = recommend_products(
+        voice_identity,
+        models.get('product_model'),
+        models.get('product_encoder'),
+        merged_customer_data_path="data/merged_customer_data.csv"
+    )
+    
+    # Simple message after generation
+    if recommendations['status'] == 'success':
+        print(f"\n[OK] Product recommendations generated successfully!")
+        print(f"   Enter voice to display recommendations.")
+    else:
+        print(f"\n[WARNING] Warning: {recommendations.get('message', 'Could not generate recommendations')}")
+    
+    # Step 3: Voice Verification
+    print("\n" + "-" * 60)
+    print("STEP 3: VOICEPRINT VERIFICATION")
     print("-" * 60)
     
     if test_mode:
@@ -483,19 +505,10 @@ def main_authentication_flow(models, test_mode=False):
     print(f"   Speaker: {speaker_identity}")
     print(f"   Confidence: {voice_confidence*100:.2f}%")
     
-    # Step 3: Product Recommendation
+    # Step 4: Display Predicted Product (after successful voice validation)
     print("\n" + "-" * 60)
-    print("STEP 3: PRODUCT RECOMMENDATION")
+    print("STEP 4: DISPLAY PREDICTED PRODUCT")
     print("-" * 60)
-    
-    print(f"Fetching product recommendations for {speaker_identity}...")
-    
-    recommendations = recommend_products(
-        speaker_identity,
-        models.get('product_model'),
-        models.get('product_encoder'),
-        merged_customer_data_path="data/merged_customer_data.csv"
-    )
     
     if recommendations['status'] == 'success':
         print(f"\n[SUCCESS] Product Recommendations:")
@@ -526,7 +539,7 @@ def simulate_unauthorized_face(models):
     
     # You can use any image that doesn't match registered users
     # For demo, we'll try with an existing image but expect low confidence
-    unauthorized_image = input("Enter path to unauthorized face image (or press Enter for default): ").strip()
+    unauthorized_image = input("Enter path to unauthorized face image (or press Enter for default): ").strip().strip('"').strip("'")
     
     if not unauthorized_image:
         # Use a different registered user's image as "unauthorized" for demo
@@ -574,7 +587,7 @@ def simulate_unauthorized_voice(models):
     
     # Step 2: Wrong voice
     print("\nStep 2: Voice sample provided")
-    wrong_audio = input("Enter path to wrong voice sample (or press Enter for demo): ").strip()
+    wrong_audio = input("Enter path to wrong voice sample (or press Enter for demo): ").strip().strip('"').strip("'")
     
     if not wrong_audio:
         # Use different user's audio as "wrong" for demo

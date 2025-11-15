@@ -92,7 +92,7 @@ This design ensures that sensitive product recommendation data is only displayed
 | Component | Model/Technique | Purpose |
 |-----------|----------------|---------|
 | **Face Recognition** | Facenet (128D embeddings) + RandomForest Classifier | Extract face features and classify user identity |
-| **Voice Verification** | 91 Audio Features + LogisticRegression Classifier | Extract voice features and verify speaker identity |
+| **Voice Verification** | 91 Audio Features + LogisticRegression (Regularized & Calibrated) | Extract voice features and verify speaker identity with 96% accuracy |
 | **Product Recommendation** | RandomForest Classifier | Predict product categories based on user data |
 
 ### 5.2 Technology Stack
@@ -197,10 +197,7 @@ This design ensures that sensitive product recommendation data is only displayed
 
 **Input**: Face image (JPG/PNG format)
 
-**Process**:
-1. The system extracts facial embeddings using the **Facenet** deep learning model, which produces 128-dimensional feature vectors that capture unique facial characteristics
-2. These embeddings are fed into a pre-trained **RandomForest classifier** that has been trained on registered user identities
-3. The classifier outputs a predicted identity along with a confidence score
+
 
 **Decision Logic**:
 - If confidence ≥ 50%: Proceed to next stage
@@ -212,10 +209,7 @@ This design ensures that sensitive product recommendation data is only displayed
 
 **Input**: Authenticated user identity from Stage 1
 
-**Process**:
-1. The system retrieves user profile data associated with the authenticated identity
-2. A **RandomForest classifier** trained on customer demographic and behavioral data generates personalized product category predictions
-3. The model produces top 3 product category recommendations with associated confidence scores
+
 
 **Security Feature**:
 - Recommendations are **generated but stored internally** - they are not displayed to the user yet
@@ -227,21 +221,12 @@ This design ensures that sensitive product recommendation data is only displayed
 
 **Input**: Audio sample (WAV/M4A format)
 
-**Process**:
-1. The system extracts **91 audio features** including:
-   - **MFCCs (Mel-Frequency Cepstral Coefficients)**: Capture timbral characteristics
-   - **Chroma features**: Represent harmonic content
-   - **Spectral features**: Describe frequency domain characteristics
-   - **Tempo and rhythm features**: Capture temporal patterns
-2. Features are normalized using a pre-trained **StandardScaler**
-3. A **LogisticRegression classifier** verifies the speaker identity
-4. The system checks both confidence threshold and identity match
 
 **Decision Logic**:
-- If confidence ≥ 70% **AND** identity matches face identity: Proceed to final stage
-- If confidence < 70% **OR** identity mismatch: Deny access and terminate
+- If confidence ≥ 70% **AND** identity matches face identity **AND** not detected as unknown: Proceed to final stage
+- If confidence < 70% **OR** identity mismatch **OR** unknown speaker detected: Deny access and terminate
 
-**Output**: Verified speaker identity with confidence score
+**Output**: Verified speaker identity with confidence score (or "unknown" if unrecognized)
 
 #### Stage 4: Display Predicted Product
 
@@ -262,10 +247,12 @@ The implementation includes several security features:
 
 1. **Dual-Factor Biometric Authentication**: Requires both face and voice verification, significantly reducing the attack surface
 2. **Confidence Thresholds**: Prevents low-quality matches from being accepted (50% face, 70% voice)
-3. **Sequential Verification**: Each stage must succeed before proceeding, with immediate denial at any failure point
-4. **Identity Mapping Verification**: Ensures voice identity matches face identity, preventing cross-identity attacks
-5. **Delayed Information Disclosure**: Product recommendations are generated but only displayed after full authentication, protecting user privacy
-6. **Fail-Safe Design**: Any authentication failure results in immediate access denial with no information leakage
+3. **Unknown Speaker Rejection**: Voice model includes "unknown" class to explicitly reject unrecognized speakers
+4. **Model Improvements**: Voice verification uses regularized and calibrated Logistic Regression achieving 96% accuracy with realistic confidence scores
+5. **Sequential Verification**: Each stage must succeed before proceeding, with immediate denial at any failure point
+6. **Identity Mapping Verification**: Ensures voice identity matches face identity, preventing cross-identity attacks
+7. **Delayed Information Disclosure**: Product recommendations are generated but only displayed after full authentication, protecting user privacy
+8. **Fail-Safe Design**: Any authentication failure results in immediate access denial with no information leakage
 
 ---
 
@@ -275,19 +262,9 @@ This report has presented the design and implementation of a multimodal biometri
 
 **Key Achievements:**
 
-1. **Security**: The dual-factor approach provides robust security against unauthorized access attempts
-2. **User Experience**: Seamless authentication process with personalized product recommendations
-3. **Privacy Protection**: Recommendations are only displayed after successful authentication
-4. **Scalability**: Modular design allows for easy extension and maintenance
 
 The system demonstrates the practical application of multimodal biometric authentication in a real-world scenario, combining security with user convenience and intelligent recommendation capabilities.
 
-**Future Enhancements:**
-
-- Additional biometric modalities (e.g., fingerprint, iris recognition)
-- Adaptive confidence thresholds based on risk assessment
-- Real-time liveness detection to prevent spoofing attacks
-- Enhanced recommendation algorithms incorporating user feedback
 
 ---
 

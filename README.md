@@ -22,9 +22,9 @@ This design ensures that sensitive product recommendation data is only displayed
 
 ---
 
-## 5. System Architecture
+## 3. System Architecture
 
-### 5.1 Models Used
+### 3.1 Models Used
 
 | Component | Model/Technique | Purpose |
 |-----------|----------------|---------|
@@ -32,7 +32,7 @@ This design ensures that sensitive product recommendation data is only displayed
 | **Voice Verification** | 91 Audio Features + NNs (Regularised & Calibrated) | Extract voice features and verify speaker identity with 96% accuracy |
 | **Product Recommendation** | RandomForest Classifier | Predict product categories based on user data |
 
-### 5.2 Technology Stack
+### 3.2 Technology Stack
 
 - **Python 3.x**: Core programming language
 - **DeepFace**: Face recognition library using the Facenet model
@@ -45,9 +45,9 @@ This design ensures that sensitive product recommendation data is only displayed
 
 ---
 
-## 6. Implementation Pipeline
+## 4. Implementation Pipeline
 
-### 6.1 System Flowchart
+### 4.1 System Flowchart
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -128,7 +128,7 @@ This design ensures that sensitive product recommendation data is only displayed
     └──────────────────────────┘
 ```
 
-### 6.2 Detailed Pipeline Explanation
+### 4.2 Detailed Pipeline Explanation
 
 #### Stage 1: Face Recognition
 
@@ -181,7 +181,7 @@ This design ensures that sensitive product recommendation data is only displayed
 
 ---
 
-## 6. Conclusion
+## 5. Conclusion
 
 This report has presented the design and implementation of a multimodal biometric authentication system integrated with product recommendation capabilities. The system successfully addresses the limitations of traditional single-factor authentication by implementing dual-factor biometric verification using face recognition and voice verification.
 
